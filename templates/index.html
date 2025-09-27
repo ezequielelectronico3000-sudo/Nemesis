@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Analizador Web BCode Pro</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Estilos básicos para las alertas (puedes mover esto a style.css) */
+        .alert-critical { color: white; background-color: #d9534f; padding: 3px 6px; border-radius: 3px; font-weight: bold; }
+        .alert-warning { color: white; background-color: #f0ad4e; padding: 3px 6px; border-radius: 3px; font-weight: bold; }
+        .alert-info { color: white; background-color: #5bc0de; padding: 3px 6px; border-radius: 3px; font-weight: bold; }
+        .alert-ok { color: white; background-color: #5cb85c; padding: 3px 6px; border-radius: 3px; font-weight: bold; }
+        .error { color: #d9534f; font-weight: bold; }
+        /* Estilos para pestañas y snippets (asegura que coincidan con style.css) */
+        .tab-content.hidden { display: none; }
+        .tab-button { cursor: pointer; padding: 10px 20px; border: none; background-color: #444; color: white; transition: background-color 0.3s; }
+        .tab-button.active { background-color: var(--primary-red); }
+        .tabs { margin-top: 20px; border-bottom: 2px solid #555; }
+        .ai-response { white-space: pre-wrap; background-color: #1a1a1a; padding: 15px; border-radius: 5px; margin-top: 10px; position: relative; }
+        .copy-btn { position: absolute; top: 5px; right: 5px; background-color: #ff5757; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; }
+    </style>
+
+</head>
+<body>
+    
+    <div id="particles-js"></div> 
+    
+    <div class="container">
+        <h1>Analizador Web BCode Pro</h1>
+        <form method="POST">
+            <input type="text" name="url" placeholder="Introduce la URL a analizar (ej: https://ejemplo.com)" required>
+            <button type="submit">Analizar</button>
+        </form>
+
+        {% if resultados %}
+            {% if resultados.error %}
+                <p class="error">Error: {{ resultados.error }}</p>
+            {% else %}
+                <div class="tabs">
+                    <button class="tab-button" onclick="openTab(event, 'tab-seo')">SEO / Contenido</button>
+                    <button class="tab-button" onclick="openTab(event, 'tab-code')">Rendimiento / Código</button>
+                    <button class="tab-button" onclick="openTab(event, 'tab-security')">Seguridad Web 🔒</button>
+                </div>
+                
+                <div id="tab-seo" class="tab-content hidden">
+                    <h2>Metadatos y Estructura</h2>
+                    <p><strong>Título:</strong> {{ resultados.titulo }}</p>
+                    <p><strong>Meta Description:</strong> {{ resultados.meta_datos.description }}</p>
+                    <p><strong>Meta Keywords:</strong> {{ resultados.meta_datos.keywords }}</p>
+                    <p><strong>Favicon / OG Image:</strong> 
+                        {% if resultados.meta_datos.og_image %}
+                            <a href="{{ resultados.meta_datos.og_image }}" target="_blank" style="color: var(--primary-red);">Ver Imagen</a>
+                        {% else %}
+                            No encontrado
+                        {% endif %}
+                    </p>
+
+                    <h3>Estructura de Encabezados (H1-H6)</h3>
+                    {% for tag, data in resultados.estructura_encabezados.items() %}
+                        <p><strong>{{ tag.upper() }} ({{ data.conteo }}):</strong> {{ data.textos|join(', ') }}</p>
+                    {% endfor %}
+
+                    <h3>Palabras Clave Frecuentes</h3>
+                    <pre>{{ resultados.palabras_clave|tojson(indent=2) }}</pre>
+                </div>
+
+                <div id="tab-code" class="tab-content hidden">
+                    <h2>Análisis de Archivos y Rendimiento</h2>
+                    <p><strong>Recursos Externos Analizados:</strong> <span class="alert-info">{{ resultados.conteo_recursos_ok }}</span> / {{ resultados.total_recursos_ext }}</p>
+                    <p><strong>Imágenes sin 'alt':</strong> <span class="{% if resultados.analisis_imagenes.imagenes_sin_alt > 0 %}alert-warning{% else %}alert-ok{% endif %}">{{ resultados.analisis_imagenes.imagenes_sin_alt }}</span> de {{ resultados.analisis_imagenes.total_imagenes }} ({{ resultados.analisis_imagenes.porcentaje_sin_alt }}%)</p>
+                    <p><strong>Bloques CSS/JS Inline:</strong> CSS (<span class="{% if resultados.contenido_inline.css_inline_blocks > 0 %}alert-warning{% else %}alert-ok{% endif %}">{{ resultados.contenido_inline.css_inline_blocks }}</span>), JS (<span class="{% if resultados.contenido_inline.js_inline_blocks > 0 %}alert-warning{% else %}alert-ok{% endif %}">{{ resultados.contenido_inline.js_inline_blocks }}</span>)</p>
+                    
+                    <h3>Archivos CSS Descargados</h3>
+                    <ul class="code-list">
+                        {% for css in resultados.css_archivos %}
+                            <li>
+                                <strong>{{ css.nombre_corto }}</strong> (<a href="{{ css.url }}" target="_blank" style="color: var(--primary-red);">Enlace</a>)
+                                <div class="code-snippet"><pre><code>{{ css.contenido }}</code></pre></div>
+                            </li>
+                        {% else %}
+                            <li>No se detectaron archivos CSS externos.</li>
+                        {% endfor %}
+                    </ul>
+
+                    <h3>Archivos JavaScript Descargados</h3>
+                    <ul class="code-list">
+                        {% for js in resultados.js_archivos %}
+                            <li>
+                                <strong>{{ js.nombre_corto }}</strong> (<a href="{{ js.url }}" target="_blank" style="color: var(--primary-red);">Enlace</a>)
+                                <div class="code-snippet"><pre><code>{{ js.contenido }}</code></pre></div>
+                            </li>
+                        {% else %}
+                            <li>No se detectaron archivos JavaScript externos.</li>
+                        {% endfor %}
+                    </ul>
+
+                    <h3>Etiquetas HTML Obsoletas</h3>
+                    {% if resultados.etiquetas_obsoletas %}
+                        <ul>
+                            {% for tag, conteo in resultados.etiquetas_obsoletas.items() %}
+                                <li><span class="alert-warning">OBSOLETA:</span> Se encontró la etiqueta <code>&lt;{{ tag }}&gt;</code> {{ conteo }} veces.</li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="alert-ok">No se detectaron etiquetas HTML obsoletas/desaconsejadas.</p>
+                    {% endif %}
+                </div>
+                
+                <div id="tab-security" class="tab-content hidden">
+                    <h2>Análisis de Cabeceras y Código Malicioso/Obsoleto</h2>
+                    
+                    <h3>Cabeceras de Seguridad HTTP</h3>
+                    <table class="security-table">
+                        <thead>
+                            <tr><th>Cabecera</th><th>Valor Detectado</th><th>Estado</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Content-Security-Policy (CSP)</td>
+                                <td><pre>{{ resultados.analisis_cabeceras.CSP }}</pre></td>
+                                <td>{% if 'AUSENTE' in resultados.analisis_cabeceras.CSP %}<span class="alert-critical">CRÍTICO</span>{% else %}<span class="alert-ok">OK</span>{% endif %}</td>
+                            </tr>
+                            <tr>
+                                <td>X-Frame-Options (XFO)</td>
+                                <td><pre>{{ resultados.analisis_cabeceras.XFO }}</pre></td>
+                                <td>{% if 'AUSENTE' in resultados.analisis_cabeceras.XFO %}<span class="alert-warning">ALERTA</span>{% else %}<span class="alert-ok">OK</span>{% endif %}</td>
+                            </tr>
+                            <tr>
+                                <td>Strict-Transport-Security (HSTS)</td>
+                                <td><pre>{{ resultados.analisis_cabeceras.HSTS }}</pre></td>
+                                <td>{% if 'AUSENTE' in resultados.analisis_cabeceras.HSTS %}<span class="alert-info">RECOMENDADO</span>{% else %}<span class="alert-ok">OK</span>{% endif %}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h3>Vulnerabilidades de Contenido y JavaScript</h3>
+                    
+                    <p><strong>Iframes de Riesgo:</strong> {{ resultados.analisis_iframes.dominios_riesgo|length }} detectados.</p>
+                    {% if resultados.analisis_iframes.dominios_riesgo %}
+                        <ul>
+                            {% for riesgo in resultados.analisis_iframes.dominios_riesgo %}
+                                <li><span class="alert-critical">CRÍTICO:</span> {{ riesgo }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="alert-ok">No se detectaron iframes con dominios de alto riesgo.</p>
+                    {% endif %}
+                    
+                    <p><strong>Riesgo de Tabnabbing (Enlaces):</strong> {{ resultados.analisis_tabnabbing|length }} enlaces detectados sin `rel="noopener noreferrer"`.</p>
+                    {% if resultados.analisis_tabnabbing %}
+                        <ul>
+                            {% for link in resultados.analisis_tabnabbing %}
+                                <li><span class="alert-warning">ALERTA:</span> Enlace '{{ link.texto }}' a <a href="{{ link.href }}" target="_blank" style="color: var(--primary-red);">{{ link.href }}</a></li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="alert-ok">No se detectaron enlaces con riesgo de Tabnabbing.</p>
+                    {% endif %}
+
+                    <p><strong>Riesgos en JS (eval/execCommand/HTTP Inseguro):</strong></p>
+                    {% if resultados.analisis_seguridad_basica.riesgo_js_detectado or resultados.analisis_seguridad_basica.recursos_http_inseguros %}
+                        <ul>
+                            {% for riesgo in resultados.analisis_seguridad_basica.riesgo_js_detectado %}
+                                <li><span class="alert-critical">RIESGO JS:</span> {{ riesgo }}</li>
+                            {% endfor %}
+                            {% for url in resultados.analisis_seguridad_basica.recursos_http_inseguros %}
+                                <li><span class="alert-warning">HTTP INSEGURO:</span> {{ url }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="alert-ok">No se detectaron riesgos básicos de JS/APIs obsoletas o contenido mixto HTTP.</p>
+                    {% endif %}
+                </div>
+
+
+                <div class="ai-assistant">
+                    <h2>Asistente de Optimización <span style="color: var(--primary-red);">(Gemini)</span></h2>
+                    <p>Haz una pregunta específica sobre los resultados del análisis.</p>
+                    <div class="ai-controls">
+                        <input type="text" id="ai-question" placeholder="Escribe tu pregunta aquí..." style="flex-grow: 1;">
+                        
+                        <button onclick="askAI()" id="ai-button">Consultar IA</button>
+                    </div>
+                    <div class="ai-response" id="ai-response">
+                        Esperando tu pregunta...
+                        <button class="copy-btn" onclick="copyAIResponse()">Copiar Respuesta</button>
+                    </div>
+                </div>
+
+                <script>
+                    // 🚨 TRANSFERENCIA DE DATOS DE ANÁLISIS A JAVASCRIPT 🚨
+                    // Asegura que el JSON se transfiera correctamente, sin problemas de comillas o caracteres especiales.
+                    // Utilizamos tojson (Flask), safe (Jinja), y luego una doble decodificación en JS.
+                    const rawData = '{{ resultados|tojson|safe|urlencode }}';
+                    let analysisData = {};
+                    
+                    try {
+                        const decodedURI = decodeURIComponent(rawData);
+                        // Limpiamos los saltos de línea y tabulaciones que Jinja/Flask inserta
+                        const cleanedData = decodedURI.replace(/\n/g, '').replace(/\r/g, '').replace(/\t/g, '');
+                        analysisData = JSON.parse(cleanedData);
+                        console.log("Datos de análisis cargados correctamente para la IA.");
+                    } catch (e) {
+                        console.error("Error crítico al parsear analysisData. JSON de Flask posiblemente corrupto.", e);
+                        analysisData = {}; // En caso de error, deja los datos vacíos.
+                    }
+                </script>
+
+            {% endif %}
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+    
+    <script>
+        // Inicialización de Particles.js (la configuración es la misma que proporcionaste)
+        particlesJS('particles-js', {
+            "particles": {
+                "number": { "value": 120, "density": { "enable": true, "value_area": 800 } },
+                "color": { "value": "#ff9999" }, 
+                "shape": { "type": "circle" },
+                "opacity": { "value": 0.6, "random": false },
+                "size": { "value": 3, "random": true },
+                "line_linked": {
+                    "enable": true,
+                    "distance": 150,
+                    "color": "#ff5757", 
+                    "opacity": 0.5,
+                    "width": 1
+                },
+                "move": { "enable": true, "speed": 3, "direction": "none", "out_mode": "out" }
+            },
+            "interactivity": {
+                "detect_on": "canvas",
+                "events": {
+                    "onhover": { "enable": true, "mode": "repulse" },
+                    "onclick": { "enable": true, "mode": "push" },
+                    "resize": true
+                },
+                "modes": {
+                    "repulse": { "distance": 100, "duration": 0.8 }
+                }
+            }
+        });
+
+        // --- LÓGICA DE PESTAÑAS (TABS) ---
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].classList.add("hidden");
+            }
+            tablinks = document.getElementsByClassName("tab-button");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            
+            document.getElementById(tabName).classList.remove("hidden");
+            evt.currentTarget.className += " active";
+
+            localStorage.setItem('activeTab', tabName);
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.getElementById('tab-seo')) { 
+                const storedTab = localStorage.getItem('activeTab');
+                
+                let tabToOpen = 'tab-seo';
+                if (storedTab && document.getElementById(storedTab)) {
+                    tabToOpen = storedTab;
+                }
+
+                document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+                document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+
+                document.getElementById(tabToOpen).classList.remove('hidden');
+
+                document.querySelectorAll('.tab-button').forEach(button => {
+                    if (button.getAttribute('onclick').includes(tabToOpen)) {
+                        button.classList.add('active');
+                    }
+                });
+            }
+        });
+
+
+        // --- LÓGICA DEL ASISTENTE IA (AJAX) - VERSIÓN FINAL ---
+        async function askAI() {
+            const question = document.getElementById('ai-question').value;
+            const responseDiv = document.getElementById('ai-response');
+            const button = document.getElementById('ai-button');
+
+            if (!question.trim()) {
+                responseDiv.innerHTML = marked.parse('Por favor, ingresa una pregunta.');
+                return;
+            }
+            
+            if (Object.keys(analysisData).length === 0 || analysisData.error) { // Comprueba si los datos están vacíos o tienen un error
+                responseDiv.innerHTML = marked.parse('## Error: Debes analizar una URL primero para cargar los datos en el asistente.');
+                return;
+            }
+
+            button.disabled = true;
+            button.innerText = 'Consultando... ⏳';
+            responseDiv.innerHTML = marked.parse('Cargando respuesta... ⏳');
+
+            try {
+                const response = await fetch('/ask_ai', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        question: question,
+                        // Enviamos el objeto análisis decodificado
+                        analysis_data: analysisData 
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    const errorMsg = `## Error del Servidor\n\n${data.response || 'No se pudo contactar a la IA.'}`;
+                    responseDiv.innerHTML = marked.parse(errorMsg) + '<button class="copy-btn" onclick="copyAIResponse()">Copiar Respuesta</button>';
+                    return;
+                }
+
+                const htmlResponse = marked.parse(data.response);
+                
+                responseDiv.innerHTML = htmlResponse + '<button class="copy-btn" onclick="copyAIResponse()">Copiar Respuesta</button>'; 
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                const errorMsg = '## Error de Conexión\n\n**Detalle:** Error de conexión con el servidor. Verifica que el servidor Flask esté activo.';
+                responseDiv.innerHTML = marked.parse(errorMsg) + '<button class="copy-btn" onclick="copyAIResponse()">Copiar Respuesta</button>';
+            } finally {
+                button.disabled = false;
+                button.innerText = 'Consultar IA';
+            }
+        }
+
+        // --- LÓGICA DE COPIAR RESPUESTA IA (MODERNA) ---
+        function copyAIResponse() {
+            const aiResponseDiv = document.getElementById('ai-response');
+            
+            // Obtenemos solo el texto de la respuesta, excluyendo el botón de copiar.
+            const copyBtn = aiResponseDiv.querySelector('.copy-btn');
+            const responseText = aiResponseDiv.innerText.replace(copyBtn.innerText, '').trim(); 
+            const originalText = copyBtn.innerText;
+
+            navigator.clipboard.writeText(responseText).then(() => {
+                copyBtn.innerText = '✅ ¡Copiado!';
+                setTimeout(() => {
+                    copyBtn.innerText = originalText;
+                }, 1500);
+            }).catch(err => {
+                console.error('Error al copiar:', err);
+                alert('Error al copiar el texto. Intenta seleccionar y copiar manualmente.');
+                copyBtn.innerText = originalText;
+            });
+        }
+    </script>
+</body>
+</html>
